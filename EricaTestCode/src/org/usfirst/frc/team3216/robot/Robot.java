@@ -1,7 +1,5 @@
-
 package org.usfirst.frc.team3216.robot;
 
-import edu.wpi.first.wpilibj.IterativeRobot;
 import edu.wpi.first.wpilibj.*;
 
 /**
@@ -11,23 +9,52 @@ import edu.wpi.first.wpilibj.*;
  * creating this project, you must also update the manifest file in the resource
  * directory.
  */
+
+/**********
+ * Controls overview:
+ * left joystick - forward and backward controls forward speed
+ * right joystick - left and right controls rotation
+ * triggers - difference between triggers controls strafe
+ * bumpers - left bumper lowers claw
+ *         - right bumper raises claw
+ * buttons - b opens claw
+ *         - x closes claw
+ *         - a
+ *         - y
+ * direction pad -
+ * 
+ * @author jacksonservheen
+ *
+ */
 public class Robot extends IterativeRobot {
     /**
      * This function is run when the robot is first started up and should be
      * used for any initialization code.
      */
+	Timer clawTimer;
+	PowerDistributionPanel pdp;
 	Joystick xBox;
+	Compressor pcm;
+	Relay winch;
 	// java is so much simpler in this respect:
 	Talon frontLeft,frontRight,backLeft,backRight;
+	DoubleSolenoid claw;
 	
     public void robotInit() {
     	// wpilibj uses zero-based indices for components this year, 
     	// but last year wpilibc use 1-based indices (including joysticks)
+    	clawTimer = new Timer();
     	xBox       = new Joystick(0);
+    	pdp = new PowerDistributionPanel();
 		frontLeft  = new Talon(2);
 		backLeft   = new Talon(1);
 		frontRight = new Talon(0);		
 		backRight  = new Talon(3);
+		pcm = new Compressor(0);
+		claw = new DoubleSolenoid(0,1);  //switch these numbers if it goes backwards
+		winch = new Relay(0);
+		
+		pcm.setClosedLoopControl(true);
     }
 
     /**
@@ -52,12 +79,61 @@ public class Robot extends IterativeRobot {
     	// the triggers last year were read as a single value,
     	// but this year they are seperate
 		triggers = xBox.getRawAxis(2) - xBox.getRawAxis(3);
-		
-		// code goes here (processing of non-drivetrain stuff)
-		
-		
 		// call the function to set the motor speeds
 		MecanumCartesian(triggers, lYaxis, rXaxis);
+		
+		
+		// manage the claw - buttons x and b
+		int clawdir = 0;
+		boolean open = xBox.getRawButton(2), close = xBox.getRawButton(3);
+		if (open) clawdir = 1;
+		if (close) clawdir = -1;
+		manageClaw(clawdir);
+		
+		// manage the winch - bumpers
+		int winchdir = 0;
+		boolean up = xBox.getRawButton(6), down = xBox.getRawButton(5);
+		if (up) winchdir = -1;
+		if (down) winchdir = 1;
+		manageWinch(winchdir);
+    }
+    
+    void manageClaw(int direction) {
+    	// pass 1 to open
+    	//     -1 to close
+    	//      0 to do nothing
+    	
+    	// this will stop the solenoid 30 msec after no buttons are pressed
+    	if (direction == 0 && clawTimer.get() > 0.3) {  //TODO: fix this logic -- i think its broken
+    		claw.set(DoubleSolenoid.Value.kOff);
+    		clawTimer.stop();
+    		clawTimer.reset();
+    	}
+    	else if (direction == 1) {
+    		claw.set(DoubleSolenoid.Value.kForward);
+    		clawTimer.start();
+    	}
+    	else if (direction == -1) {
+    		claw.set(DoubleSolenoid.Value.kReverse);
+    		clawTimer.start();
+    	}
+    }
+    
+    void manageWinch(int direction) {
+    	// pass 1 to open
+    	//     -1 to close
+    	//      0 to do nothing
+    	
+    	// fairly simple logic: move based on buttons.
+    	if (direction == 0) {  
+    		winch.set(Relay.Value.kOff);
+    	}
+    	else if (direction == 1) {
+    		winch.set(Relay.Value.kForward);
+    	}
+    	else if (direction == -1) {
+    		winch.set(Relay.Value.kReverse);
+    	}
     }
     
     // the motors or gearboxes or something spin slower backwards,
